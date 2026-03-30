@@ -27,6 +27,12 @@ export default function SideNavOptionsForStudent({ screenWidth }) {
           hasExerciseNotification && <NotificationIcon position={"top"} text={totalExercisesInPipeline} />
         }
       />
+        
+      <NavOption
+        {...NavigationOptions.verbalFlashcards}
+        currentPath={path}
+        screenWidth={screenWidth}
+      />   
 
       <NavOption
         {...NavigationOptions.dailyAudio}
