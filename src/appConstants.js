@@ -1,5 +1,5 @@
 let APP_DOMAIN = window.location.origin;
-let API_ENDPOINT = "https://api.zeeguu.org";
+let API_ENDPOINT = "http://localhost:9001";
 
 /*
   This is done to allow Netlify previews to shown new
