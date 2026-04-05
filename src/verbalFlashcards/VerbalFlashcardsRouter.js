@@ -1,6 +1,6 @@
 import { Route, Switch } from "react-router-dom";
 import VerbalFlashcardsPage from "./VerbalFlashcardsPage";
-import {PrivateRoute} from "@/PrivateRoute";
+import { PrivateRoute } from "@/PrivateRoute";
 
 export default function VerbalFlashcardsRouter() {
     return (

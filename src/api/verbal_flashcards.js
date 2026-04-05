@@ -34,7 +34,21 @@ Zeeguu_API.prototype.submitFlashcardAnswer = function (flashcardId, userAnswer, 
         response_time_ms: responseTimeMs
     };
 
-    this._post(`verbal_flashcards/submit`, JSON.stringify(payload), callback, null, true);
+    fetch(this._appendSessionToUrl('verbal_flashcards/submit'), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload),
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (callback) callback(data);
+        })
+        .catch(error => {
+            console.error('Submit error:', error);
+            if (callback) callback({ error: error.message });
+        });
 };
 
 Zeeguu_API.prototype.transcribeAudio = function (audioFile, flashcardId, callback) {
@@ -46,7 +60,7 @@ Zeeguu_API.prototype.transcribeAudio = function (audioFile, flashcardId, callbac
 
     fetch(this._appendSessionToUrl('verbal_flashcards/transcribe'), {
         method: 'POST',
-        body: formData
+        body: formData,
     })
         .then(response => response.json())
         .then(data => {
@@ -54,6 +68,29 @@ Zeeguu_API.prototype.transcribeAudio = function (audioFile, flashcardId, callbac
         })
         .catch(error => {
             console.error('Transcription error:', error);
+            if (callback) callback({ error: error.message });
+        });
+};
+
+Zeeguu_API.prototype.checkPronunciation = function (userSpeech, expectedText, callback) {
+    const payload = {
+        user_speech: userSpeech,
+        expected_text: expectedText
+    };
+
+    fetch(this._appendSessionToUrl('verbal_flashcards/check_pronunciation'), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload),
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (callback) callback(data);
+        })
+        .catch(error => {
+            console.error('Pronunciation check error:', error);
             if (callback) callback({ error: error.message });
         });
 };
