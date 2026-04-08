@@ -48,6 +48,9 @@ export default function VerbalFlashcardsPage() {
     const voiceStartedAtRef = useRef(0);
     const recordingStartedAtRef = useRef(0);
 
+    const ttsAudioRef = useRef(null);
+    const isPlayingTtsRef = useRef(false);
+
     const SILENCE_THRESHOLD_MS = 1500;
     const MIN_VOICE_BEFORE_STOP_ELIGIBLE_MS = 120;
     const COOLDOWN_SECONDS = 5;
@@ -184,6 +187,17 @@ export default function VerbalFlashcardsPage() {
             }
         }
 
+        if (ttsAudioRef.current) {
+            try {
+                ttsAudioRef.current.pause();
+                ttsAudioRef.current.currentTime = 0;
+            } catch (e) {
+                console.warn(e);
+            }
+            ttsAudioRef.current = null;
+        }
+        isPlayingTtsRef.current = false;
+
         mediaRecorderRef.current = null;
 
         if (micStreamRef.current) {
@@ -206,6 +220,60 @@ export default function VerbalFlashcardsPage() {
         isRecordingRef.current = false;
         setIsRecording(false);
     }, []);
+
+    const playCardTts = useCallback((card) => {
+        if (!card?.prompt) return;
+
+        // stop previous audio if any
+        if (ttsAudioRef.current) {
+            try {
+                ttsAudioRef.current.pause();
+                ttsAudioRef.current.currentTime = 0;
+            } catch (e) {
+                console.warn(e);
+            }
+            ttsAudioRef.current = null;
+        }
+
+        const formData = new FormData();
+        formData.append('text', card.prompt);
+
+        // adjust this if your card stores the language somewhere else
+        formData.append('language_id', userDetails?.learned_language || 'da');
+
+        fetch(`${api.apiRoot || ''}/text_to_speech`, {
+            method: 'POST',
+            body: formData,
+            credentials: 'include',
+        })
+            .then(res => res.text())
+            .then((audioPath) => {
+                if (!audioPath) return;
+
+                const audioUrl = audioPath.startsWith('http')
+                    ? audioPath
+                    : `${api.apiRoot || ''}${audioPath}`;
+
+                const audio = new Audio(audioUrl);
+                ttsAudioRef.current = audio;
+                isPlayingTtsRef.current = true;
+
+                audio.onended = () => {
+                    isPlayingTtsRef.current = false;
+                };
+
+                audio.onerror = (err) => {
+                    console.error('TTS audio error:', err);
+                    isPlayingTtsRef.current = false;
+                };
+
+                return audio.play();
+            })
+            .catch((err) => {
+                console.error('TTS request failed:', err);
+                isPlayingTtsRef.current = false;
+            });
+    }, [api, userDetails]);
 
     const stopRecording = useCallback(() => {
         const recorder = mediaRecorderRef.current;
@@ -464,6 +532,11 @@ export default function VerbalFlashcardsPage() {
         stopCurrentFlow();
         resetCardUi();
 
+        const card = filteredFlashcardsRef.current[currentCardIndexRef.current];
+        if (card) {
+            playCardTts(card);
+        }
+
         let cooldownSeconds = COOLDOWN_SECONDS;
         setIsCooldown(true);
         isCooldownRef.current = true;
@@ -487,7 +560,7 @@ export default function VerbalFlashcardsPage() {
 
             await openMicAndStartRecording();
         }, COOLDOWN_SECONDS * 1000);
-    }, [openMicAndStartRecording, resetCardUi, stopCurrentFlow, updateStatusWithDebounce]);
+    }, [openMicAndStartRecording, resetCardUi, stopCurrentFlow, updateStatusWithDebounce, playCardTts]);
 
     const clearFilters = useCallback(() => {
         setFilteredFlashcards(flashcards);
@@ -525,8 +598,12 @@ export default function VerbalFlashcardsPage() {
     }, [stopCurrentFlow]);
 
     const repeatCard = useCallback(() => {
+        const card = getCurrentCard();
+        if (card) {
+            playCardTts(card);
+        }
         beginCardFlow();
-    }, [beginCardFlow]);
+    }, [beginCardFlow, getCurrentCard, playCardTts]);
 
     useEffect(() => {
         loadFlashcards();
