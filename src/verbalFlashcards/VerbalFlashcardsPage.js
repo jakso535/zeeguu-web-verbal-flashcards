@@ -88,6 +88,10 @@ export default function VerbalFlashcardsPage() {
         return filteredFlashcardsRef.current[currentCardIndexRef.current];
     }, []);
 
+    const getPromptLanguageId = useCallback(() => {
+        return userDetails?.learned_language || 'da';
+    }, [userDetails]);
+
     const resetCardUi = useCallback(() => {
         setShowHint(false);
         setShowResult(false);
@@ -221,10 +225,16 @@ export default function VerbalFlashcardsPage() {
         setIsRecording(false);
     }, []);
 
-    const playCardTts = useCallback((card) => {
-        if (!card?.prompt) return;
+    const playCardTts = useCallback((card = null) => {
+        const cardToSpeak = card || getCurrentCard();
+        const textToSpeak = cardToSpeak?.prompt || '';
+        const languageId = getPromptLanguageId();
 
-        // stop previous audio if any
+        if (!textToSpeak) {
+            updateStatusWithDebounce('No text available for TTS', 'error');
+            return;
+        }
+
         if (ttsAudioRef.current) {
             try {
                 ttsAudioRef.current.pause();
@@ -235,24 +245,15 @@ export default function VerbalFlashcardsPage() {
             ttsAudioRef.current = null;
         }
 
-        const formData = new FormData();
-        formData.append('text', card.prompt);
+        isPlayingTtsRef.current = false;
+        updateStatusWithDebounce('Requesting TTS audio...', 'processing', 0);
 
-        // adjust this if your card stores the language somewhere else
-        formData.append('language_id', userDetails?.learned_language || 'da');
-
-        fetch(`${api.apiRoot || ''}/text_to_speech`, {
-            method: 'POST',
-            body: formData,
-            credentials: 'include',
-        })
-            .then(res => res.text())
-            .then((audioPath) => {
-                if (!audioPath) return;
-
-                const audioUrl = audioPath.startsWith('http')
-                    ? audioPath
-                    : `${api.apiRoot || ''}${audioPath}`;
+        api.fetchLinkToSpeechMp3(textToSpeak, languageId)
+            .then((audioUrl) => {
+                if (!audioUrl) {
+                    updateStatusWithDebounce('TTS returned no audio path', 'error', 0);
+                    return;
+                }
 
                 const audio = new Audio(audioUrl);
                 ttsAudioRef.current = audio;
@@ -260,20 +261,24 @@ export default function VerbalFlashcardsPage() {
 
                 audio.onended = () => {
                     isPlayingTtsRef.current = false;
+                    updateStatusWithDebounce('TTS playback finished', 'idle', 0);
                 };
 
                 audio.onerror = (err) => {
                     console.error('TTS audio error:', err);
                     isPlayingTtsRef.current = false;
+                    updateStatusWithDebounce('TTS audio playback failed', 'error', 0);
                 };
 
+                updateStatusWithDebounce('Playing TTS audio...', 'recording', 0);
                 return audio.play();
             })
             .catch((err) => {
                 console.error('TTS request failed:', err);
                 isPlayingTtsRef.current = false;
+                updateStatusWithDebounce('TTS request failed', 'error', 0);
             });
-    }, [api, userDetails]);
+    }, [api, getCurrentCard, getPromptLanguageId, updateStatusWithDebounce]);
 
     const stopRecording = useCallback(() => {
         const recorder = mediaRecorderRef.current;
@@ -420,7 +425,7 @@ export default function VerbalFlashcardsPage() {
                     }
 
                     updateStatusWithDebounce(
-                        `⏸️ Waiting for speech / silence...`,
+                        '⏸️ Waiting for speech / silence...',
                         'processing',
                         0
                     );
@@ -560,7 +565,7 @@ export default function VerbalFlashcardsPage() {
 
             await openMicAndStartRecording();
         }, COOLDOWN_SECONDS * 1000);
-    }, [openMicAndStartRecording, resetCardUi, stopCurrentFlow, updateStatusWithDebounce, playCardTts]);
+    }, [openMicAndStartRecording, playCardTts, resetCardUi, stopCurrentFlow, updateStatusWithDebounce]);
 
     const clearFilters = useCallback(() => {
         setFilteredFlashcards(flashcards);
@@ -681,7 +686,7 @@ export default function VerbalFlashcardsPage() {
                     <s.StatItem>
                         <s.StatLabel>Progress:</s.StatLabel>
                         <s.StatValue>
-                            {filteredFlashcards.length > 0 ? currentCardIndex + 1 : 0}/{filteredFlashcards.length}
+                            {`${filteredFlashcards.length > 0 ? currentCardIndex + 1 : 0}/${filteredFlashcards.length}`}
                         </s.StatValue>
                     </s.StatItem>
                     <s.StatItem>
