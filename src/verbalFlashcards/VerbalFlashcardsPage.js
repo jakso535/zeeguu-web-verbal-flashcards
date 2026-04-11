@@ -9,12 +9,10 @@ export default function VerbalFlashcardsPage() {
 
     // State
     const [flashcards, setFlashcards] = useState([]);
-    const [filteredFlashcards, setFilteredFlashcards] = useState([]);
     const [currentCardIndex, setCurrentCardIndex] = useState(0);
     const [loading, setLoading] = useState(true);
     const [totalScore, setTotalScore] = useState(0);
     const [currentStreak, setCurrentStreak] = useState(0);
-    const [showHint, setShowHint] = useState(false);
     const [showResult, setShowResult] = useState(false);
     const [userSpeech, setUserSpeech] = useState('');
     const [accuracyResult, setAccuracyResult] = useState(null);
@@ -39,10 +37,11 @@ export default function VerbalFlashcardsPage() {
     const countdownIntervalRef = useRef(null);
 
     const currentCardIndexRef = useRef(0);
-    const filteredFlashcardsRef = useRef([]);
+    const flashcardsRef = useRef([]);
     const isRecordingRef = useRef(false);
     const isCooldownRef = useRef(false);
     const isStartingRecordingRef = useRef(false);
+    const shouldProcessRecordingOnStopRef = useRef(false);
 
     const lastVoiceDetectedAtRef = useRef(0);
     const voiceStartedAtRef = useRef(0);
@@ -60,8 +59,8 @@ export default function VerbalFlashcardsPage() {
     }, [currentCardIndex]);
 
     useEffect(() => {
-        filteredFlashcardsRef.current = filteredFlashcards;
-    }, [filteredFlashcards]);
+        flashcardsRef.current = flashcards;
+    }, [flashcards]);
 
     useEffect(() => {
         isRecordingRef.current = isRecording;
@@ -85,15 +84,14 @@ export default function VerbalFlashcardsPage() {
     }, []);
 
     const getCurrentCard = useCallback(() => {
-        return filteredFlashcardsRef.current[currentCardIndexRef.current];
+        return flashcardsRef.current[currentCardIndexRef.current];
     }, []);
 
     const getPromptLanguageId = useCallback(() => {
-        return userDetails?.learned_language || 'da';
+        return userDetails?.native_language || 'en';
     }, [userDetails]);
 
     const resetCardUi = useCallback(() => {
-        setShowHint(false);
         setShowResult(false);
         setAccuracyResult(null);
         setUserSpeech('');
@@ -165,8 +163,7 @@ export default function VerbalFlashcardsPage() {
             console.log('Flashcards loaded:', data);
             const cards = data.flashcards || [];
             setFlashcards(cards);
-            setFilteredFlashcards(cards);
-            filteredFlashcardsRef.current = cards;
+            flashcardsRef.current = cards;
 
             if (cards.length > 0) {
                 setCurrentCardIndex(0);
@@ -184,6 +181,7 @@ export default function VerbalFlashcardsPage() {
         }
 
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            shouldProcessRecordingOnStopRef.current = false;
             try {
                 mediaRecorderRef.current.stop();
             } catch (e) {
@@ -220,6 +218,7 @@ export default function VerbalFlashcardsPage() {
         voiceStartedAtRef.current = 0;
         lastVoiceDetectedAtRef.current = 0;
         recordingStartedAtRef.current = 0;
+        shouldProcessRecordingOnStopRef.current = false;
         isStartingRecordingRef.current = false;
         isRecordingRef.current = false;
         setIsRecording(false);
@@ -284,6 +283,7 @@ export default function VerbalFlashcardsPage() {
         const recorder = mediaRecorderRef.current;
 
         if (recorder && recorder.state === 'recording') {
+            shouldProcessRecordingOnStopRef.current = true;
             try {
                 recorder.stop();
             } catch (e) {
@@ -304,6 +304,12 @@ export default function VerbalFlashcardsPage() {
     }, [updateStatusWithDebounce]);
 
     const handleRecordingStop = useCallback(() => {
+        if (!shouldProcessRecordingOnStopRef.current) {
+            cleanupAudioResources();
+            updateStatusWithDebounce('Recording cancelled', 'idle', 0);
+            return;
+        }
+
         const currentCard = getCurrentCard();
 
         if (!currentCard) {
@@ -482,6 +488,7 @@ export default function VerbalFlashcardsPage() {
             };
 
             mediaRecorderRef.current.onstop = handleRecordingStop;
+            shouldProcessRecordingOnStopRef.current = true;
 
             recordingStartedAtRef.current = Date.now();
             lastVoiceDetectedAtRef.current = Date.now();
@@ -532,12 +539,12 @@ export default function VerbalFlashcardsPage() {
     }, [cancelCountdown, cleanupAudioResources]);
 
     const beginCardFlow = useCallback(() => {
-        if (filteredFlashcardsRef.current.length === 0) return;
+        if (flashcardsRef.current.length === 0) return;
 
         stopCurrentFlow();
         resetCardUi();
 
-        const card = filteredFlashcardsRef.current[currentCardIndexRef.current];
+        const card = flashcardsRef.current[currentCardIndexRef.current];
         if (card) {
             playCardTts(card);
         }
@@ -567,16 +574,8 @@ export default function VerbalFlashcardsPage() {
         }, COOLDOWN_SECONDS * 1000);
     }, [openMicAndStartRecording, playCardTts, resetCardUi, stopCurrentFlow, updateStatusWithDebounce]);
 
-    const clearFilters = useCallback(() => {
-        setFilteredFlashcards(flashcards);
-        filteredFlashcardsRef.current = flashcards;
-        setCurrentCardIndex(0);
-        currentCardIndexRef.current = 0;
-        resetCardUi();
-    }, [flashcards, resetCardUi]);
-
     const nextCard = useCallback(() => {
-        if (currentCardIndexRef.current < filteredFlashcardsRef.current.length - 1) {
+        if (currentCardIndexRef.current < flashcardsRef.current.length - 1) {
             stopCurrentFlow();
             const nextIndex = currentCardIndexRef.current + 1;
             currentCardIndexRef.current = nextIndex;
@@ -595,20 +594,16 @@ export default function VerbalFlashcardsPage() {
 
     const shuffleCards = useCallback(() => {
         stopCurrentFlow();
-        const shuffled = [...filteredFlashcardsRef.current].sort(() => Math.random() - 0.5);
-        setFilteredFlashcards(shuffled);
-        filteredFlashcardsRef.current = shuffled;
+        const shuffled = [...flashcardsRef.current].sort(() => Math.random() - 0.5);
+        setFlashcards(shuffled);
+        flashcardsRef.current = shuffled;
         setCurrentCardIndex(0);
         currentCardIndexRef.current = 0;
     }, [stopCurrentFlow]);
 
     const repeatCard = useCallback(() => {
-        const card = getCurrentCard();
-        if (card) {
-            playCardTts(card);
-        }
         beginCardFlow();
-    }, [beginCardFlow, getCurrentCard, playCardTts]);
+    }, [beginCardFlow]);
 
     useEffect(() => {
         loadFlashcards();
@@ -616,10 +611,10 @@ export default function VerbalFlashcardsPage() {
 
     useEffect(() => {
         if (loading) return;
-        if (filteredFlashcards.length === 0) return;
+        if (flashcards.length === 0) return;
 
         beginCardFlow();
-    }, [currentCardIndex, filteredFlashcards, loading, beginCardFlow]);
+    }, [currentCardIndex, flashcards, loading, beginCardFlow]);
 
     useEffect(() => {
         return () => {
@@ -633,7 +628,7 @@ export default function VerbalFlashcardsPage() {
         };
     }, [cancelCountdown, cleanupAudioResources]);
 
-    const currentCard = filteredFlashcards[currentCardIndex];
+    const currentCard = flashcards[currentCardIndex];
 
     const renderWordBreakdown = (wordMatches) => {
         if (!wordMatches || wordMatches.length === 0) return null;
@@ -686,7 +681,7 @@ export default function VerbalFlashcardsPage() {
                     <s.StatItem>
                         <s.StatLabel>Progress:</s.StatLabel>
                         <s.StatValue>
-                            {`${filteredFlashcards.length > 0 ? currentCardIndex + 1 : 0}/${filteredFlashcards.length}`}
+                            {`${flashcards.length > 0 ? currentCardIndex + 1 : 0}/${flashcards.length}`}
                         </s.StatValue>
                     </s.StatItem>
                     <s.StatItem>
@@ -709,38 +704,16 @@ export default function VerbalFlashcardsPage() {
                             <s.Spinner />
                             <p>Loading flashcards...</p>
                         </s.LoadingState>
-                    ) : filteredFlashcards.length === 0 ? (
+                    ) : flashcards.length === 0 ? (
                         <s.NoCardsMessage>
-                            <p>😕 No flashcards match your filters</p>
-                            <s.FilterButton onClick={clearFilters}>Clear Filters</s.FilterButton>
+                            <p>No flashcards available.</p>
                         </s.NoCardsMessage>
                     ) : currentCard && (
                         <>
                             <s.PromptSection>
                                 <s.PromptLabel>Say this:</s.PromptLabel>
                                 <s.PromptText>{currentCard.prompt}</s.PromptText>
-                                {currentCard.phoneticHint && (
-                                    <s.PhoneticHint>{currentCard.phoneticHint}</s.PhoneticHint>
-                                )}
                             </s.PromptSection>
-
-                            <s.HintSection>
-                                <s.HintToggle onClick={() => setShowHint(!showHint)}>
-                                    <span className="hint-icon">💡</span>
-                                    <span>{showHint ? 'Hide Hint' : 'Show Hint'}</span>
-                                </s.HintToggle>
-
-                                {showHint && (
-                                    <s.HintContent>
-                                        <s.HintBox>
-                                            <p>{currentCard.hint || 'No hint available'}</p>
-                                            {currentCard.example && (
-                                                <s.ExampleSentence>{currentCard.example}</s.ExampleSentence>
-                                            )}
-                                        </s.HintBox>
-                                    </s.HintContent>
-                                )}
-                            </s.HintSection>
 
                             <s.RecordingSection>
                                 <s.StatusMessage $statusType={statusType}>
@@ -808,7 +781,7 @@ export default function VerbalFlashcardsPage() {
                                     </s.NavButton>
                                     <s.NavButton
                                         onClick={nextCard}
-                                        disabled={currentCardIndex === filteredFlashcards.length - 1}
+                                        disabled={currentCardIndex === flashcards.length - 1}
                                     >
                                         Next →
                                     </s.NavButton>

@@ -64,29 +64,6 @@ export const FilterSelect = styled.select`
 `;
 
 
-export const FilterButton = styled.button`
-   padding: 8px 16px;
-   background: ${zeeguuDarkOrange};
-   color: white;
-   border: none;
-   border-radius: 4px;
-   cursor: pointer;
-   font-size: 14px;
-   transition: all 0.3s ease;
-
-
-   &:hover {
-       background: ${zeeguuWarmYellow};
-       transform: translateY(-1px);
-   }
-
-
-   &:active {
-       transform: translateY(0);
-   }
-`;
-
-
 export const StatsContainer = styled.div`
    display: flex;
    gap: 20px;
@@ -207,99 +184,9 @@ export const PromptText = styled.div`
 `;
 
 
-export const PhoneticHint = styled.div`
-   color: #999;
-   font-size: 14px;
-   font-style: italic;
-`;
-
-
-export const HintSection = styled.div`
-   margin: 20px 0;
-`;
-
-
-export const HintToggle = styled.button`
-   background: none;
-   border: none;
-   color: ${zeeguuDarkOrange};
-   cursor: pointer;
-   font-size: 14px;
-   display: flex;
-   align-items: center;
-   gap: 5px;
-   margin: 0 auto;
-
-
-   &:hover {
-       color: ${zeeguuWarmYellow};
-   }
-`;
-
-
-export const HintContent = styled.div`
-   margin-top: 15px;
-   animation: slideDown 0.3s ease;
-
-
-   @keyframes slideDown {
-       from {
-           opacity: 0;
-           transform: translateY(-10px);
-       }
-       to {
-           opacity: 1;
-           transform: translateY(0);
-       }
-   }
-`;
-
-
-export const HintBox = styled.div`
-   background: #f9f9f9;
-   padding: 15px;
-   border-radius: 8px;
-   border-left: 4px solid ${zeeguuDarkOrange};
-`;
-
-
-export const ExampleSentence = styled.p`
-   color: #666;
-   font-style: italic;
-   margin-top: 10px;
-`;
-
-
 export const RecordingSection = styled.div`
    text-align: center;
    margin: 25px 0;
-`;
-
-
-export const RecordButton = styled.button`
-   background: ${zeeguuRed};
-   color: white;
-   border: none;
-   border-radius: 50px;
-   padding: 12px 24px;
-   font-size: 16px;
-   cursor: pointer;
-   display: inline-flex;
-   align-items: center;
-   gap: 10px;
-   transition: all 0.3s ease;
-
-
-   &:hover:not(:disabled) {
-       background: ${zeeguuDarkOrange};
-       transform: scale(1.05);
-   }
-
-
-   &:disabled {
-       background: #ccc;
-       cursor: not-allowed;
-   }
 `;
 
 
