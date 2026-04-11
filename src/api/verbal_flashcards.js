@@ -14,13 +14,14 @@ Zeeguu_API.prototype.getFlashcards = function (params, callback) {
 };
 
 
-Zeeguu_API.prototype.submitFlashcardAnswer = function (flashcardId, userAnswer, isCorrect, answerSource, responseTimeMs, callback) {
+Zeeguu_API.prototype.submitFlashcardAnswer = function (flashcardId, userAnswer, isCorrect, answerSource, responseTimeMs, sessionId, callback) {
    const payload = {
        flashcard_id: flashcardId,
        user_answer: userAnswer,
        is_correct: isCorrect,
        answer_source: answerSource,
-       response_time_ms: responseTimeMs
+       response_time_ms: responseTimeMs,
+       session_id: sessionId
    };
 
 
