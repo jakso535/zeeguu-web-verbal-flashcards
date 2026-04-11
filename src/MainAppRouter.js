@@ -31,7 +31,6 @@ import LocalStorage from "./assorted/LocalStorage";
 import { Capacitor } from "@capacitor/core";
 import useAnonymousUpgrade from "./hooks/useAnonymousUpgrade";
 import UpgradeAccountModal from "./components/UpgradeAccountModal";
-import verbalFlashcardsPage from "./verbalFlashcards/verbalFlashcardsPage";
 
 // Lazy load separate parts of the app
 const LazyTeacherRouter = lazy(() => import("./teacher/_routing/_TeacherRouter"));
@@ -53,7 +52,7 @@ import DailyAudioRouter from "./dailyAudio/_DailyAudioRouter";
 import IndividualExercise from "./pages/IndividualExercise";
 import Swiper from "./swiper/Swiper";
 import KeyboardTest from "./pages/KeyboardTest";
-import VerbalFlashcardsPage from "./verbalFlashcards/verbalFlashcardsPage";
+import VerbalFlashcardsPage from "./verbalFlashcards/VerbalFlashcardsPage";
 import VerbalFlashcardsRouter from "@/verbalFlashcards/VerbalFlashcardsRouter";
 
 // Helper to detect if we're in a Capacitor native app
