@@ -64,6 +64,32 @@ export const FilterSelect = styled.select`
 `;
 
 
+export const HeaderButton = styled.button`
+   padding: 8px 14px;
+   border: none;
+   border-radius: 6px;
+   background: ${zeeguuDarkOrange};
+   color: white;
+   cursor: pointer;
+   font-size: 14px;
+   font-weight: 600;
+   transition: all 0.2s ease;
+
+
+   &:hover:not(:disabled) {
+       background: ${zeeguuWarmYellow};
+       transform: translateY(-1px);
+   }
+
+
+   &:disabled {
+       opacity: 0.6;
+       cursor: not-allowed;
+       transform: none;
+   }
+`;
+
+
 export const StatsContainer = styled.div`
    display: flex;
    gap: 20px;

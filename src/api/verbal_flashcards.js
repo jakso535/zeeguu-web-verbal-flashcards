@@ -14,6 +14,28 @@ Zeeguu_API.prototype.getFlashcards = function (params, callback) {
 };
 
 
+Zeeguu_API.prototype.reseedFlashcards = function (count, callback) {
+   const payload = { count: count || 20 };
+
+
+   fetch(this._appendSessionToUrl('verbal_flashcards/reseed'), {
+       method: 'POST',
+       headers: {
+           'Content-Type': 'application/json'
+       },
+       body: JSON.stringify(payload),
+   })
+       .then(response => response.json())
+       .then(data => {
+           if (callback) callback(data);
+       })
+       .catch(error => {
+           console.error('Reseed error:', error);
+           if (callback) callback({ error: error.message });
+       });
+};
+
+
 Zeeguu_API.prototype.submitFlashcardAnswer = function (flashcardId, userAnswer, isCorrect, answerSource, responseTimeMs, sessionId, callback) {
    const payload = {
        flashcard_id: flashcardId,

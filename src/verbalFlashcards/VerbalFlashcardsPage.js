@@ -13,6 +13,7 @@ export default function VerbalFlashcardsPage() {
     const [flashcards, setFlashcards] = useState([]);
     const [currentCardIndex, setCurrentCardIndex] = useState(0);
     const [loading, setLoading] = useState(true);
+    const [isReseeding, setIsReseeding] = useState(false);
     const [totalScore, setTotalScore] = useState(0);
     const [currentStreak, setCurrentStreak] = useState(0);
     const [showResult, setShowResult] = useState(false);
@@ -62,6 +63,7 @@ export default function VerbalFlashcardsPage() {
     const beginCardFlowRef = useRef(() => {});
     const flowRunIdRef = useRef(0);
     const isResolvingCardRef = useRef(false);
+    const sessionCreateRequestIdRef = useRef(0);
 
     const SILENCE_THRESHOLD_MS = 1500;
     const MIN_VOICE_BEFORE_STOP_ELIGIBLE_MS = 120;
@@ -165,6 +167,20 @@ export default function VerbalFlashcardsPage() {
         );
     }, []);
 
+    const startExerciseSession = useCallback(() => {
+        pageSessionStartedAtRef.current = Date.now();
+        sessionEndedRef.current = false;
+        exerciseSessionIdRef.current = null;
+        sessionCreateRequestIdRef.current += 1;
+        const requestId = sessionCreateRequestIdRef.current;
+
+        api.exerciseSessionCreate((sessionId) => {
+            if (sessionCreateRequestIdRef.current === requestId) {
+                exerciseSessionIdRef.current = sessionId;
+            }
+        });
+    }, [api]);
+
     const endExerciseSessionIfNeeded = useCallback(() => {
         if (sessionEndedRef.current) return;
 
@@ -226,7 +242,7 @@ export default function VerbalFlashcardsPage() {
         return '';
     };
 
-    const loadFlashcards = useCallback(() => {
+    const loadFlashcards = useCallback((afterLoad = null) => {
         setLoading(true);
         setShowResult(false);
 
@@ -243,6 +259,10 @@ export default function VerbalFlashcardsPage() {
             }
 
             setLoading(false);
+
+            if (afterLoad) {
+                afterLoad(cards);
+            }
         });
     }, [api]);
 
@@ -801,22 +821,76 @@ export default function VerbalFlashcardsPage() {
         beginCardFlow();
     }, [beginCardFlow]);
 
+    const reseedFlashcards = useCallback(() => {
+        if (isReseeding) return;
+
+        stopCurrentFlow();
+        setIsReseeding(true);
+        setLoading(true);
+        resetCardUi();
+        setCorrectBookmarks([]);
+        setIncorrectBookmarks([]);
+        setTotalPracticedBookmarksInSession(0);
+        setTotalScore(0);
+        setCurrentStreak(0);
+        setStatusMessage('Adding fresh Danish test words...');
+        setStatusType('processing');
+
+        endExerciseSessionIfNeeded();
+        exerciseSessionIdRef.current = null;
+        startExerciseSession();
+
+        api.reseedFlashcards(20, (result) => {
+            if (result?.error) {
+                setIsReseeding(false);
+                setLoading(false);
+                updateStatusWithDebounce(`Reseed failed: ${result.error}`, 'error', 0);
+                return;
+            }
+
+            const seededCount = result?.seeded_count || 0;
+            const refreshedCount = result?.refreshed_count || 0;
+
+            loadFlashcards((cards) => {
+                setIsReseeding(false);
+
+                if (cards.length > 0) {
+                    updateStatusWithDebounce(
+                        `Ready with ${cards.length} flashcards (${seededCount} new, ${refreshedCount} refreshed).`,
+                        'idle',
+                        0
+                    );
+                } else {
+                    updateStatusWithDebounce(
+                        `Added words (${seededCount} new, ${refreshedCount} refreshed), but no flashcards are available yet.`,
+                        'warning',
+                        0
+                    );
+                }
+            });
+        });
+    }, [
+        api,
+        endExerciseSessionIfNeeded,
+        isReseeding,
+        loadFlashcards,
+        resetCardUi,
+        startExerciseSession,
+        stopCurrentFlow,
+        updateStatusWithDebounce,
+    ]);
+
     useEffect(() => {
         loadFlashcards();
     }, [loadFlashcards]);
 
     useEffect(() => {
-        pageSessionStartedAtRef.current = Date.now();
-        sessionEndedRef.current = false;
-
-        api.exerciseSessionCreate((sessionId) => {
-            exerciseSessionIdRef.current = sessionId;
-        });
+        startExerciseSession();
 
         return () => {
             endExerciseSessionIfNeeded();
         };
-    }, [api, endExerciseSessionIfNeeded]);
+    }, [endExerciseSessionIfNeeded, startExerciseSession]);
 
     useEffect(() => {
         if (loading) return;
@@ -883,6 +957,12 @@ export default function VerbalFlashcardsPage() {
                             <option value="0.08">Medium Noise (Outdoor)</option>
                             <option value="0.11">High Noise (Street)</option>
                         </s.FilterSelect>
+                        <s.HeaderButton
+                            onClick={reseedFlashcards}
+                            disabled={loading || isReseeding}
+                        >
+                            {isReseeding ? 'Reseeding…' : 'Reseed 20 Danish Words'}
+                        </s.HeaderButton>
                     </s.FiltersContainer>
                 </s.TitleSection>
 
