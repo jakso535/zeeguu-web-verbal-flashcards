@@ -40,6 +40,7 @@ export default function VerbalFlashcardsPage() {
     const statusUpdateTimeoutRef = useRef(null);
     const cooldownTimeoutRef = useRef(null);
     const countdownIntervalRef = useRef(null);
+    const interCardDelayTimeoutRef = useRef(null);
 
     const currentCardIndexRef = useRef(0);
     const flashcardsRef = useRef([]);
@@ -60,9 +61,11 @@ export default function VerbalFlashcardsPage() {
     const attemptCountsRef = useRef({});
     const beginCardFlowRef = useRef(() => {});
     const flowRunIdRef = useRef(0);
+    const isResolvingCardRef = useRef(false);
 
     const SILENCE_THRESHOLD_MS = 1500;
     const MIN_VOICE_BEFORE_STOP_ELIGIBLE_MS = 120;
+    const BETWEEN_CARDS_DELAY_MS = 5000;
 
     useEffect(() => {
         currentCardIndexRef.current = currentCardIndex;
@@ -410,13 +413,18 @@ export default function VerbalFlashcardsPage() {
                     ? `Well done! The correct answer was '${card.answer}'.`
                     : `You almost got it, the correct answer was '${card.answer}'.`;
 
+                isResolvingCardRef.current = true;
                 speakFeedback(feedbackText).finally(() => {
-                    removeResolvedCard(
-                        card,
-                        nextCorrectBookmarks,
-                        nextIncorrectBookmarks,
-                        practicedCount
-                    );
+                    interCardDelayTimeoutRef.current = setTimeout(() => {
+                        interCardDelayTimeoutRef.current = null;
+                        isResolvingCardRef.current = false;
+                        removeResolvedCard(
+                            card,
+                            nextCorrectBookmarks,
+                            nextIncorrectBookmarks,
+                            practicedCount
+                        );
+                    }, BETWEEN_CARDS_DELAY_MS);
                 });
             }
         );
@@ -699,6 +707,13 @@ export default function VerbalFlashcardsPage() {
             countdownIntervalRef.current = null;
         }
 
+        if (interCardDelayTimeoutRef.current) {
+            clearTimeout(interCardDelayTimeoutRef.current);
+            interCardDelayTimeoutRef.current = null;
+        }
+
+        isResolvingCardRef.current = false;
+
         setIsCooldown(false);
         isCooldownRef.current = false;
     }, []);
@@ -719,6 +734,7 @@ export default function VerbalFlashcardsPage() {
 
     const beginCardFlow = useCallback(() => {
         if (flashcardsRef.current.length === 0) return;
+        if (isResolvingCardRef.current) return;
 
         stopCurrentFlow();
         resetCardUi();
