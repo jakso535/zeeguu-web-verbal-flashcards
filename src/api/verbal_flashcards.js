@@ -14,6 +14,16 @@ Zeeguu_API.prototype.getFlashcards = function (params, callback) {
 };
 
 
+Zeeguu_API.prototype.getVerbalFlashcardsAsrMetricsUrl = function () {
+   return this._appendSessionToUrl('verbal_flashcards/asr_metrics');
+};
+
+
+Zeeguu_API.prototype.getVerbalFlashcardsAsrStats = function (callback) {
+   this._getJSON('verbal_flashcards/asr_stats', callback);
+};
+
+
 Zeeguu_API.prototype.reseedFlashcards = function (count, callback) {
    const payload = { count: count || 20 };
 

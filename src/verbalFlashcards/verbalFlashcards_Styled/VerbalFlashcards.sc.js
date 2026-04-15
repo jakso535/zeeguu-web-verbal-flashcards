@@ -90,6 +90,58 @@ export const HeaderButton = styled.button`
 `;
 
 
+export const ASRStatsPanel = styled.div`
+   margin-top: 12px;
+   padding: 14px;
+   border: 1px solid #e4d7c6;
+   border-radius: 8px;
+   background: #fffaf3;
+`;
+
+
+export const ASRStatsHeader = styled.div`
+   display: flex;
+   justify-content: space-between;
+   align-items: center;
+   gap: 12px;
+   margin-bottom: 12px;
+
+
+   h4 {
+       margin: 0;
+       color: ${zeeguuDarkOrange};
+   }
+`;
+
+
+export const ASRStatsGrid = styled.div`
+   display: grid;
+   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+   gap: 10px 16px;
+`;
+
+
+export const ASRStatsItem = styled.div`
+   font-size: 14px;
+   color: #444;
+`;
+
+
+export const ASRStatsLink = styled.a`
+   display: inline-block;
+   margin-top: 12px;
+   color: ${zeeguuDarkOrange};
+   font-size: 14px;
+   font-weight: 600;
+   text-decoration: none;
+
+
+   &:hover {
+       text-decoration: underline;
+   }
+`;
+
+
 export const StatsContainer = styled.div`
    display: flex;
    gap: 20px;

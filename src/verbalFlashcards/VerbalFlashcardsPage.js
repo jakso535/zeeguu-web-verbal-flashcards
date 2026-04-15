@@ -27,6 +27,8 @@ export default function VerbalFlashcardsPage() {
     const [correctBookmarks, setCorrectBookmarks] = useState([]);
     const [incorrectBookmarks, setIncorrectBookmarks] = useState([]);
     const [totalPracticedBookmarksInSession, setTotalPracticedBookmarksInSession] = useState(0);
+    const [asrStats, setAsrStats] = useState(null);
+    const [showAsrStats, setShowAsrStats] = useState(false);
 
     // Refs
     const mediaRecorderRef = useRef(null);
@@ -129,6 +131,23 @@ export default function VerbalFlashcardsPage() {
 
         return languageNames[code] || code || 'the target language';
     }, [userDetails]);
+
+    const openAsrMetrics = useCallback(() => {
+        api.getVerbalFlashcardsAsrStats((stats) => {
+            if (!stats || stats.error) {
+                updateStatusWithDebounce('Could not load ASR stats', 'error', 0);
+                return;
+            }
+
+            setAsrStats(stats);
+            setShowAsrStats(true);
+            updateStatusWithDebounce('Loaded ASR stats', 'idle', 0);
+        });
+    }, [api, updateStatusWithDebounce]);
+
+    const hideAsrMetrics = useCallback(() => {
+        setShowAsrStats(false);
+    }, []);
 
     const resetCardUi = useCallback(() => {
         setShowResult(false);
@@ -538,6 +557,13 @@ export default function VerbalFlashcardsPage() {
                 return;
             }
 
+            if (result?.request_metrics) {
+                setAsrStats((prev) => ({
+                    ...(prev || {}),
+                    last_request_metrics: result.request_metrics,
+                }));
+            }
+
             const transcription = result?.transcription || '';
             const expectedText = currentCard.expectedText || currentCard.prompt;
 
@@ -941,6 +967,81 @@ export default function VerbalFlashcardsPage() {
         );
     };
 
+    const formatMetricValue = (value, suffix = '') => {
+        if (value === null || value === undefined || value === '') return 'n/a';
+        return `${value}${suffix}`;
+    };
+
+    const renderAsrStats = () => {
+        if (!showAsrStats || !asrStats) return null;
+
+        const lastRequest = asrStats.last_request_metrics || {};
+        const requestCounts = asrStats.request_counts || {};
+
+        return (
+            <s.ASRStatsPanel>
+                <s.ASRStatsHeader>
+                    <h4>ASR Debug Stats</h4>
+                    <s.HeaderButton onClick={hideAsrMetrics}>Hide</s.HeaderButton>
+                </s.ASRStatsHeader>
+                <s.ASRStatsGrid>
+                    <s.ASRStatsItem>
+                        <strong>Model:</strong> {asrStats.configured_model_name || 'n/a'}
+                    </s.ASRStatsItem>
+                    <s.ASRStatsItem>
+                        <strong>Available:</strong> {asrStats.asr_available ? 'yes' : 'no'}
+                    </s.ASRStatsItem>
+                    <s.ASRStatsItem>
+                        <strong>Loaded:</strong> {asrStats.model_loaded ? 'yes' : 'no'}
+                    </s.ASRStatsItem>
+                    <s.ASRStatsItem>
+                        <strong>Process RSS:</strong> {formatMetricValue(asrStats.process_memory_rss_mb, ' MB')}
+                    </s.ASRStatsItem>
+                    <s.ASRStatsItem>
+                        <strong>Model cache:</strong> {formatMetricValue(asrStats.model_cache_size_mb, ' MB')}
+                    </s.ASRStatsItem>
+                    <s.ASRStatsItem>
+                        <strong>Startup load delta:</strong> {formatMetricValue(asrStats.memory_delta_mb, ' MB')}
+                    </s.ASRStatsItem>
+                    <s.ASRStatsItem>
+                        <strong>Requests:</strong> {formatMetricValue(requestCounts.total_requests)}
+                    </s.ASRStatsItem>
+                    <s.ASRStatsItem>
+                        <strong>Mock requests:</strong> {formatMetricValue(requestCounts.mock_requests)}
+                    </s.ASRStatsItem>
+                    <s.ASRStatsItem>
+                        <strong>Failed requests:</strong> {formatMetricValue(requestCounts.failed_requests)}
+                    </s.ASRStatsItem>
+                    <s.ASRStatsItem>
+                        <strong>Last request duration:</strong> {formatMetricValue(lastRequest.request_duration_ms, ' ms')}
+                    </s.ASRStatsItem>
+                    <s.ASRStatsItem>
+                        <strong>Last request memory delta:</strong> {formatMetricValue(lastRequest.process_memory_delta_mb, ' MB')}
+                    </s.ASRStatsItem>
+                    <s.ASRStatsItem>
+                        <strong>Last audio size:</strong> {formatMetricValue(lastRequest.audio_input_bytes, ' bytes')}
+                    </s.ASRStatsItem>
+                    <s.ASRStatsItem>
+                        <strong>Last audio duration:</strong> {formatMetricValue(lastRequest.audio_duration_ms, ' ms')}
+                    </s.ASRStatsItem>
+                    <s.ASRStatsItem>
+                        <strong>Last WAV size:</strong> {formatMetricValue(lastRequest.wav_file_size_bytes, ' bytes')}
+                    </s.ASRStatsItem>
+                    <s.ASRStatsItem>
+                        <strong>Last status:</strong> {lastRequest.status || 'n/a'}
+                    </s.ASRStatsItem>
+                </s.ASRStatsGrid>
+                <s.ASRStatsLink
+                    href={api.getVerbalFlashcardsAsrMetricsUrl()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >
+                    Open raw Prometheus metrics
+                </s.ASRStatsLink>
+            </s.ASRStatsPanel>
+        );
+    };
+
     return (
         <s.FlashcardsContainer>
             <s.HeaderSection>
@@ -963,8 +1064,13 @@ export default function VerbalFlashcardsPage() {
                         >
                             {isReseeding ? 'Reseeding…' : 'Reseed 20 Danish Words'}
                         </s.HeaderButton>
+                        <s.HeaderButton onClick={openAsrMetrics}>
+                            {showAsrStats ? 'Refresh ASR Stats' : 'Show ASR Stats'}
+                        </s.HeaderButton>
                     </s.FiltersContainer>
                 </s.TitleSection>
+
+                {renderAsrStats()}
 
                 <s.StatsContainer>
                     <s.StatItem>
