@@ -426,13 +426,6 @@ export const FeedbackMessage = styled.div`
 `;
 
 
-export const DetailedAnalysis = styled.div`
-   margin-top: 10px;
-   font-size: 14px;
-   color: #666;
-`;
-
-
 export const WordBreakdown = styled.div`
    margin-top: 20px;
 
@@ -459,18 +452,8 @@ export const WordItem = styled.div`
  background: white;
  border-radius: 6px;
  font-size: 14px;
- background: ${props => {
-   if (props.$isCorrect && props.$isInPosition) return '#c8e6c9';
-   if (props.$isCorrect && !props.$isInPosition) return '#fff3e0';
-   if (!props.$isCorrect) return '#ffebee';
-   return 'white';
-}};
- border-left: 4px solid ${props => {
-   if (props.$isCorrect && props.$isInPosition) return '#4caf50';
-   if (props.$isCorrect && !props.$isInPosition) return '#ff9800';
-   if (!props.$isCorrect) return '#f44336';
-   return '#ddd';
-}};
+ background: ${props => (props.$isCorrect ? '#c8e6c9' : '#ffebee')};
+ border-left: 4px solid ${props => (props.$isCorrect ? '#4caf50' : '#f44336')};
 `;
 
 

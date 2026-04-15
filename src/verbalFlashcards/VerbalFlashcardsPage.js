@@ -41,8 +41,6 @@ export default function VerbalFlashcardsPage() {
     const animationFrameRef = useRef(null);
 
     const statusUpdateTimeoutRef = useRef(null);
-    const cooldownTimeoutRef = useRef(null);
-    const countdownIntervalRef = useRef(null);
     const interCardDelayTimeoutRef = useRef(null);
 
     const currentCardIndexRef = useRef(0);
@@ -57,6 +55,7 @@ export default function VerbalFlashcardsPage() {
     const recordingStartedAtRef = useRef(0);
 
     const ttsAudioRef = useRef(null);
+    const ttsRequestIdRef = useRef(0);
     const isPlayingTtsRef = useRef(false);
     const exerciseSessionIdRef = useRef(null);
     const pageSessionStartedAtRef = useRef(null);
@@ -66,6 +65,8 @@ export default function VerbalFlashcardsPage() {
     const flowRunIdRef = useRef(0);
     const isResolvingCardRef = useRef(false);
     const sessionCreateRequestIdRef = useRef(0);
+    const lastAutoStartedFlowKeyRef = useRef(null);
+    const isPageActiveRef = useRef(true);
 
     const SILENCE_THRESHOLD_MS = 1500;
     const MIN_VOICE_BEFORE_STOP_ELIGIBLE_MS = 120;
@@ -98,6 +99,12 @@ export default function VerbalFlashcardsPage() {
         statusUpdateTimeoutRef.current = setTimeout(() => {
             statusUpdateTimeoutRef.current = null;
         }, delay);
+    }, []);
+
+    const canContinueFlow = useCallback((flowRunId = null) => {
+        if (!isPageActiveRef.current) return false;
+        if (flowRunId !== null && flowRunId !== flowRunIdRef.current) return false;
+        return true;
     }, []);
 
     const getCurrentCard = useCallback(() => {
@@ -266,7 +273,6 @@ export default function VerbalFlashcardsPage() {
         setShowResult(false);
 
         api.getFlashcards(null, (data) => {
-            console.log('Flashcards loaded:', data);
             const cards = data.flashcards || [];
             setFlashcards(cards);
             flashcardsRef.current = cards;
@@ -300,15 +306,17 @@ export default function VerbalFlashcardsPage() {
             }
         }
 
+        ttsRequestIdRef.current += 1;
         if (ttsAudioRef.current) {
             try {
                 ttsAudioRef.current.pause();
                 ttsAudioRef.current.currentTime = 0;
+                ttsAudioRef.current.src = '';
             } catch (e) {
                 console.warn(e);
             }
-            ttsAudioRef.current = null;
         }
+        ttsAudioRef.current = null;
         isPlayingTtsRef.current = false;
 
         mediaRecorderRef.current = null;
@@ -341,6 +349,9 @@ export default function VerbalFlashcardsPage() {
             return Promise.resolve();
         }
 
+        ttsRequestIdRef.current += 1;
+        const playbackId = ttsRequestIdRef.current;
+
         if (ttsAudioRef.current) {
             try {
                 ttsAudioRef.current.pause();
@@ -361,27 +372,40 @@ export default function VerbalFlashcardsPage() {
                     return;
                 }
 
+                if (playbackId !== ttsRequestIdRef.current || !isPageActiveRef.current) {
+                    return;
+                }
+
                 return new Promise((resolve) => {
                     const audio = new Audio(audioUrl);
                     ttsAudioRef.current = audio;
                     isPlayingTtsRef.current = true;
+                    updateStatusWithDebounce(playbackStatusMessage, 'recording', 0);
 
                     audio.onended = () => {
+                        if (ttsAudioRef.current === audio) {
+                            ttsAudioRef.current = null;
+                        }
                         isPlayingTtsRef.current = false;
-                        updateStatusWithDebounce('TTS playback finished', 'idle', 0);
+                        updateStatusWithDebounce('Spoken prompt finished', 'idle', 0);
                         resolve();
                     };
 
-                    audio.onerror = (err) => {
-                        console.error('TTS audio error:', err);
+                    audio.onerror = (event) => {
+                        console.error('TTS audio error:', event);
+                        if (ttsAudioRef.current === audio) {
+                            ttsAudioRef.current = null;
+                        }
                         isPlayingTtsRef.current = false;
                         updateStatusWithDebounce('TTS audio playback failed', 'error', 0);
                         resolve();
                     };
 
-                    updateStatusWithDebounce(playbackStatusMessage, 'recording', 0);
                     audio.play().catch((err) => {
                         console.error('TTS playback start failed:', err);
+                        if (ttsAudioRef.current === audio) {
+                            ttsAudioRef.current = null;
+                        }
                         isPlayingTtsRef.current = false;
                         updateStatusWithDebounce('TTS audio playback failed', 'error', 0);
                         resolve();
@@ -412,8 +436,21 @@ export default function VerbalFlashcardsPage() {
         return speakText(textToSpeak, languageId, 'Playing feedback...');
     }, [speakText, userDetails]);
 
+    const speakFeedbackWithAnswer = useCallback((introText, answerText) => {
+        const nativeLanguageId = userDetails?.native_language || 'en';
+        const learnedLanguageId = userDetails?.learned_language || nativeLanguageId;
+
+        return speakText(introText, nativeLanguageId, 'Playing feedback...')
+            .then(() => {
+                if (!answerText || !isPageActiveRef.current) {
+                    return;
+                }
+                return speakText(answerText, learnedLanguageId, 'Playing answer...');
+            });
+    }, [speakText, userDetails]);
+
     const resolveCardAttempt = useCallback((card, userAnswer, isCorrect) => {
-        if (!card) return;
+        if (!card || !canContinueFlow()) return;
 
         const nextCorrectBookmarks = isCorrect
             ? [...correctBookmarks, card]
@@ -443,20 +480,26 @@ export default function VerbalFlashcardsPage() {
             responseTime,
             exerciseSessionId,
             () => {
+                if (!canContinueFlow()) return;
                 setCorrectBookmarks(nextCorrectBookmarks);
                 setIncorrectBookmarks(nextIncorrectBookmarks);
                 setTotalPracticedBookmarksInSession(practicedCount);
                 delete attemptCountsRef.current[card.id];
 
-                const feedbackText = isCorrect
-                    ? `Well done! The correct answer was '${card.answer}'.`
-                    : `You almost got it, the correct answer was '${card.answer}'.`;
-
                 isResolvingCardRef.current = true;
-                speakFeedback(feedbackText).finally(() => {
+                const feedbackIntro = isCorrect
+                    ? 'Well done! The correct answer was'
+                    : 'You almost got it. The correct answer was';
+
+                speakFeedbackWithAnswer(feedbackIntro, card.answer).finally(() => {
+                    if (!canContinueFlow()) {
+                        isResolvingCardRef.current = false;
+                        return;
+                    }
                     interCardDelayTimeoutRef.current = setTimeout(() => {
                         interCardDelayTimeoutRef.current = null;
                         isResolvingCardRef.current = false;
+                        if (!canContinueFlow()) return;
                         removeResolvedCard(
                             card,
                             nextCorrectBookmarks,
@@ -472,12 +515,13 @@ export default function VerbalFlashcardsPage() {
         correctBookmarks,
         incorrectBookmarks,
         removeResolvedCard,
-        speakFeedback,
+        speakFeedbackWithAnswer,
         totalPracticedBookmarksInSession,
+        canContinueFlow,
     ]);
 
     const handleAttemptOutcome = useCallback((card, userAnswer, isCorrect) => {
-        if (!card) return;
+        if (!card || !canContinueFlow()) return;
 
         const nextAttemptCount = (attemptCountsRef.current[card.id] || 0) + 1;
         attemptCountsRef.current[card.id] = nextAttemptCount;
@@ -489,6 +533,9 @@ export default function VerbalFlashcardsPage() {
 
         if (nextAttemptCount === 1) {
             speakFeedback('Almost there. Try again.').finally(() => {
+                if (!canContinueFlow()) {
+                    return;
+                }
                 if (getCurrentCard()?.id === card.id) {
                     beginCardFlowRef.current();
                 }
@@ -497,7 +544,7 @@ export default function VerbalFlashcardsPage() {
         }
 
         resolveCardAttempt(card, userAnswer, false);
-    }, [getCurrentCard, resolveCardAttempt, speakFeedback]);
+    }, [getCurrentCard, resolveCardAttempt, speakFeedback, canContinueFlow]);
 
     const stopRecording = useCallback(() => {
         const recorder = mediaRecorderRef.current;
@@ -524,6 +571,13 @@ export default function VerbalFlashcardsPage() {
     }, [updateStatusWithDebounce]);
 
     const handleRecordingStop = useCallback(() => {
+        const flowRunId = flowRunIdRef.current;
+
+        if (!canContinueFlow(flowRunId)) {
+            cleanupAudioResources();
+            return;
+        }
+
         if (!shouldProcessRecordingOnStopRef.current) {
             cleanupAudioResources();
             updateStatusWithDebounce('Recording cancelled', 'idle', 0);
@@ -550,6 +604,11 @@ export default function VerbalFlashcardsPage() {
         updateStatusWithDebounce('Processing...', 'processing', 0);
 
         api.transcribeAudio(audioBlob, currentCard.id, (result) => {
+            if (!canContinueFlow(flowRunId)) {
+                cleanupAudioResources();
+                return;
+            }
+
             if (result?.error) {
                 console.error('Transcription error:', result.error);
                 updateStatusWithDebounce(`Error: ${result.error}`, 'error');
@@ -568,6 +627,11 @@ export default function VerbalFlashcardsPage() {
             const expectedText = currentCard.expectedText || currentCard.prompt;
 
             api.checkPronunciation(transcription, expectedText, (analysis) => {
+                if (!canContinueFlow(flowRunId)) {
+                    cleanupAudioResources();
+                    return;
+                }
+
                 if (analysis?.error) {
                     console.error('Pronunciation check error:', analysis.error);
 
@@ -577,7 +641,6 @@ export default function VerbalFlashcardsPage() {
                         accuracy: isCorrect ? 100 : 0,
                         feedback: isCorrect ? 'Correct!' : 'Try again',
                         wordMatches: [],
-                        detailedAnalysis: ''
                     });
 
                     cleanupAudioResources();
@@ -591,7 +654,7 @@ export default function VerbalFlashcardsPage() {
 
             });
         });
-    }, [api, cleanupAudioResources, displayResults, getCurrentCard, handleAttemptOutcome, updateStatusWithDebounce]);
+    }, [api, canContinueFlow, cleanupAudioResources, displayResults, getCurrentCard, handleAttemptOutcome, updateStatusWithDebounce]);
 
     const setupSilenceDetection = useCallback(() => {
         if (!micStreamRef.current) return;
@@ -743,16 +806,6 @@ export default function VerbalFlashcardsPage() {
     }, [cleanupAudioResources, handleRecordingStop, setupSilenceDetection, updateStatusWithDebounce]);
 
     const cancelCountdown = useCallback(() => {
-        if (cooldownTimeoutRef.current) {
-            clearTimeout(cooldownTimeoutRef.current);
-            cooldownTimeoutRef.current = null;
-        }
-
-        if (countdownIntervalRef.current) {
-            clearInterval(countdownIntervalRef.current);
-            countdownIntervalRef.current = null;
-        }
-
         if (interCardDelayTimeoutRef.current) {
             clearTimeout(interCardDelayTimeoutRef.current);
             interCardDelayTimeoutRef.current = null;
@@ -772,7 +825,6 @@ export default function VerbalFlashcardsPage() {
             isRecordingRef.current
             || isStartingRecordingRef.current
             || micStreamRef.current
-            || ttsAudioRef.current
         ) {
             cleanupAudioResources();
         }
@@ -803,7 +855,6 @@ export default function VerbalFlashcardsPage() {
                 return;
             }
 
-            cooldownTimeoutRef.current = null;
             setIsCooldown(false);
             isCooldownRef.current = false;
             updateStatusWithDebounce('Starting microphone...', 'processing', 0);
@@ -907,6 +958,7 @@ export default function VerbalFlashcardsPage() {
     ]);
 
     useEffect(() => {
+        isPageActiveRef.current = true;
         loadFlashcards();
     }, [loadFlashcards]);
 
@@ -922,11 +974,36 @@ export default function VerbalFlashcardsPage() {
         if (loading) return;
         if (flashcards.length === 0) return;
 
+        const currentCard = flashcards[currentCardIndex];
+        if (!currentCard) return;
+
+        const autoStartKey = `${currentCard.id}:${currentCardIndex}:${flashcards.length}`;
+        const isCurrentFlowAlreadyStarting =
+            lastAutoStartedFlowKeyRef.current === autoStartKey
+            && (
+                isCooldownRef.current
+                || isPlayingTtsRef.current
+                || isStartingRecordingRef.current
+                || isRecordingRef.current
+            );
+
+        if (isCurrentFlowAlreadyStarting) {
+            return;
+        }
+
+        lastAutoStartedFlowKeyRef.current = autoStartKey;
         beginCardFlow();
     }, [currentCardIndex, flashcards, loading, beginCardFlow]);
 
     useEffect(() => {
+        const unlisten = history.listen(() => {
+            isPageActiveRef.current = false;
+            stopCurrentFlow();
+        });
+
         return () => {
+            isPageActiveRef.current = false;
+            flowRunIdRef.current += 1;
             cancelCountdown();
 
             if (statusUpdateTimeoutRef.current) {
@@ -934,8 +1011,9 @@ export default function VerbalFlashcardsPage() {
             }
 
             cleanupAudioResources();
+            unlisten();
         };
-    }, [cancelCountdown, cleanupAudioResources]);
+    }, [cancelCountdown, cleanupAudioResources, history, stopCurrentFlow]);
 
     const currentCard = flashcards[currentCardIndex];
 
@@ -950,12 +1028,11 @@ export default function VerbalFlashcardsPage() {
                         <s.WordItem
                             key={idx}
                             $isCorrect={match.isCorrect}
-                            $isInPosition={match.isInPosition}
                         >
                             <s.WordText>{match.word}</s.WordText>
                             <s.WordPosition>{match.position + 1}</s.WordPosition>
                             <s.WordStatus>
-                                {match.isCorrect ? (match.isInPosition ? '✓✓' : '✓✗') : '✗'}
+                                {match.isCorrect ? '✓' : '✗'}
                             </s.WordStatus>
                             {match.suggestedWord && !match.isCorrect && (
                                 <s.WordSuggestion>→ {match.suggestedWord}</s.WordSuggestion>
@@ -1005,9 +1082,6 @@ export default function VerbalFlashcardsPage() {
                     </s.ASRStatsItem>
                     <s.ASRStatsItem>
                         <strong>Requests:</strong> {formatMetricValue(requestCounts.total_requests)}
-                    </s.ASRStatsItem>
-                    <s.ASRStatsItem>
-                        <strong>Mock requests:</strong> {formatMetricValue(requestCounts.mock_requests)}
                     </s.ASRStatsItem>
                     <s.ASRStatsItem>
                         <strong>Failed requests:</strong> {formatMetricValue(requestCounts.failed_requests)}
@@ -1154,12 +1228,6 @@ export default function VerbalFlashcardsPage() {
                                         >
                                             {accuracyResult.feedback}
                                         </s.FeedbackMessage>
-
-                                        {accuracyResult.detailedAnalysis && (
-                                            <s.DetailedAnalysis>
-                                                {accuracyResult.detailedAnalysis}
-                                            </s.DetailedAnalysis>
-                                        )}
                                     </s.FeedbackContainer>
 
                                     {renderWordBreakdown(accuracyResult.wordMatches)}

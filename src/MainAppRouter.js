@@ -52,7 +52,6 @@ import DailyAudioRouter from "./dailyAudio/_DailyAudioRouter";
 import IndividualExercise from "./pages/IndividualExercise";
 import Swiper from "./swiper/Swiper";
 import KeyboardTest from "./pages/KeyboardTest";
-import VerbalFlashcardsPage from "./verbalFlashcards/VerbalFlashcardsPage";
 import VerbalFlashcardsRouter from "@/verbalFlashcards/VerbalFlashcardsRouter";
 
 // Helper to detect if we're in a Capacitor native app
