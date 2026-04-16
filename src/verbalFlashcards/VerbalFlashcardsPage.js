@@ -13,7 +13,6 @@ export default function VerbalFlashcardsPage() {
     const [flashcards, setFlashcards] = useState([]);
     const [currentCardIndex, setCurrentCardIndex] = useState(0);
     const [loading, setLoading] = useState(true);
-    const [isReseeding, setIsReseeding] = useState(false);
     const [totalScore, setTotalScore] = useState(0);
     const [currentStreak, setCurrentStreak] = useState(0);
     const [showResult, setShowResult] = useState(false);
@@ -71,6 +70,60 @@ export default function VerbalFlashcardsPage() {
     const SILENCE_THRESHOLD_MS = 1500;
     const MIN_VOICE_BEFORE_STOP_ELIGIBLE_MS = 120;
     const BETWEEN_CARDS_DELAY_MS = 5000;
+    const LANGUAGE_LOCALES = {
+        da: 'da-DK',
+        de: 'de-DE',
+        el: 'el-GR',
+        en: 'en-US',
+        es: 'es-ES',
+        fr: 'fr-FR',
+        hu: 'hu-HU',
+        it: 'it-IT',
+        nl: 'nl-NL',
+        no: 'nb-NO',
+        pl: 'pl-PL',
+        pt: 'pt-PT',
+        ro: 'ro-RO',
+        ru: 'ru-RU',
+        sv: 'sv-SE',
+        tr: 'tr-TR',
+    };
+    const FALLBACK_LANGUAGE_NAMES = {
+        da: 'Danish',
+        de: 'German',
+        el: 'Greek',
+        en: 'English',
+        es: 'Spanish',
+        fr: 'French',
+        hu: 'Hungarian',
+        it: 'Italian',
+        nl: 'Dutch',
+        no: 'Norwegian',
+        pl: 'Polish',
+        pt: 'Portuguese',
+        ro: 'Romanian',
+        ru: 'Russian',
+        sv: 'Swedish',
+        tr: 'Turkish',
+    };
+    const PROMPT_COPY = {
+        da: (prompt, targetLanguage) => `Sig '${prompt}' på ${targetLanguage}.`,
+        de: (prompt, targetLanguage) => `Bitte sag '${prompt}' auf ${targetLanguage}.`,
+        el: (prompt, targetLanguage) => `Πες '${prompt}' στα ${targetLanguage}.`,
+        en: (prompt, targetLanguage) => `Please say '${prompt}' in ${targetLanguage}.`,
+        es: (prompt, targetLanguage) => `Di '${prompt}' en ${targetLanguage}.`,
+        fr: (prompt, targetLanguage) => `Dis '${prompt}' en ${targetLanguage}.`,
+        hu: (prompt, targetLanguage) => `Mondd azt, hogy '${prompt}' ${targetLanguage} nyelven.`,
+        it: (prompt, targetLanguage) => `Di '${prompt}' in ${targetLanguage}.`,
+        nl: (prompt, targetLanguage) => `Zeg '${prompt}' in het ${targetLanguage}.`,
+        no: (prompt, targetLanguage) => `Si '${prompt}' på ${targetLanguage}.`,
+        pl: (prompt, targetLanguage) => `Powiedz '${prompt}' po ${targetLanguage}.`,
+        pt: (prompt, targetLanguage) => `Diz '${prompt}' em ${targetLanguage}.`,
+        ro: (prompt, targetLanguage) => `Spune '${prompt}' în ${targetLanguage}.`,
+        ru: (prompt, targetLanguage) => `Скажи '${prompt}' на ${targetLanguage}.`,
+        sv: (prompt, targetLanguage) => `Säg '${prompt}' på ${targetLanguage}.`,
+        tr: (prompt, targetLanguage) => `'${prompt}' kelimesini ${targetLanguage} dilinde söyle.`,
+    };
     const FEEDBACK_COPY = {
         da: {
             successIntro: 'Godt klaret! Det rigtige svar var',
@@ -201,34 +254,49 @@ export default function VerbalFlashcardsPage() {
         return userDetails?.native_language || 'en';
     }, [userDetails]);
 
-    const getLearnedLanguageLabel = useCallback(() => {
-        const code = userDetails?.learned_language || '';
-        const languageNames = {
-            da: 'Danish',
-            de: 'German',
-            el: 'Greek',
-            en: 'English',
-            es: 'Spanish',
-            fr: 'French',
-            hu: 'Hungarian',
-            it: 'Italian',
-            nl: 'Dutch',
-            no: 'Norwegian',
-            pl: 'Polish',
-            pt: 'Portuguese',
-            ro: 'Romanian',
-            ru: 'Russian',
-            sv: 'Swedish',
-            tr: 'Turkish',
-        };
-
-        return languageNames[code] || code || 'the target language';
-    }, [userDetails]);
-
     const getFeedbackCopy = useCallback(() => {
         const translationLanguageId = getTranslationLanguageId();
         return FEEDBACK_COPY[translationLanguageId] || FEEDBACK_COPY.en;
     }, [getTranslationLanguageId]);
+
+    const getLocaleForLanguage = useCallback((languageCode) => {
+        return LANGUAGE_LOCALES[languageCode] || languageCode || 'en-US';
+    }, []);
+
+    const getLocalizedLanguageName = useCallback((languageCode, displayLanguageCode) => {
+        if (!languageCode) return 'the target language';
+
+        if (typeof Intl !== 'undefined' && typeof Intl.DisplayNames === 'function') {
+            try {
+                const displayNames = new Intl.DisplayNames(
+                    [getLocaleForLanguage(displayLanguageCode)],
+                    { type: 'language' },
+                );
+                const localizedName = displayNames.of(languageCode);
+                if (localizedName) {
+                    return localizedName;
+                }
+            } catch (error) {
+                console.warn('Could not localize language name:', error);
+            }
+        }
+
+        return FALLBACK_LANGUAGE_NAMES[languageCode] || languageCode || 'the target language';
+    }, [getLocaleForLanguage]);
+
+    const buildPromptInstructionText = useCallback((promptText) => {
+        if (!promptText) return '';
+
+        const translationLanguageId = getTranslationLanguageId();
+        const learnedLanguageId = userDetails?.learned_language || 'en';
+        const localizedTargetLanguage = getLocalizedLanguageName(
+            learnedLanguageId,
+            translationLanguageId,
+        );
+        const promptBuilder = PROMPT_COPY[translationLanguageId] || PROMPT_COPY.en;
+
+        return promptBuilder(promptText, localizedTargetLanguage);
+    }, [getLocalizedLanguageName, getTranslationLanguageId, userDetails]);
 
     const openAsrMetrics = useCallback(() => {
         api.getVerbalFlashcardsAsrStats((stats) => {
@@ -253,20 +321,23 @@ export default function VerbalFlashcardsPage() {
         setUserSpeech('');
     }, []);
 
-    const updateScoreAndStreak = useCallback((accuracy) => {
-        if (accuracy >= 70) {
-            setTotalScore(prev => prev + accuracy);
+    const updateScoreAndStreak = useCallback((analysis) => {
+        if (!analysis) return;
+
+        if (analysis.isAccepted) {
+            setTotalScore(prev => prev + (analysis.accuracy || 0));
             setCurrentStreak(prev => prev + 1);
-        } else {
-            setCurrentStreak(0);
+            return;
         }
+
+        setCurrentStreak(0);
     }, []);
 
     const displayResults = useCallback((speech, analysis) => {
         setUserSpeech(speech);
         setAccuracyResult(analysis);
         setShowResult(true);
-        updateScoreAndStreak(analysis.accuracy);
+        updateScoreAndStreak(analysis);
 
         setTimeout(() => {
             const resultSection = document.getElementById('resultSection');
@@ -513,14 +584,11 @@ export default function VerbalFlashcardsPage() {
     const playCardTts = useCallback((card = null) => {
         const cardToSpeak = card || getCurrentCard();
         const promptText = cardToSpeak?.prompt || '';
-        const learnedLanguageLabel = getLearnedLanguageLabel().toLowerCase();
-        const textToSpeak = promptText
-            ? `Please say '${promptText}' in ${learnedLanguageLabel}.`
-            : '';
+        const textToSpeak = buildPromptInstructionText(promptText);
         const languageId = getPromptLanguageId();
 
         return speakText(textToSpeak, languageId);
-    }, [getCurrentCard, getLearnedLanguageLabel, getPromptLanguageId, speakText]);
+    }, [buildPromptInstructionText, getCurrentCard, getPromptLanguageId, speakText]);
 
     const speakFeedback = useCallback((textToSpeak) => {
         const languageId = getTranslationLanguageId();
@@ -542,14 +610,6 @@ export default function VerbalFlashcardsPage() {
 
     const resolveCardAttempt = useCallback((card, userAnswer, isCorrect) => {
         if (!card || !canContinueFlow()) return;
-
-        const nextCorrectBookmarks = isCorrect
-            ? [...correctBookmarks, card]
-            : correctBookmarks;
-        const nextIncorrectBookmarks = isCorrect
-            ? incorrectBookmarks
-            : [...incorrectBookmarks, card];
-        const practicedCount = totalPracticedBookmarksInSession + 1;
         const responseTime = recordingStartedAtRef.current
             ? Date.now() - recordingStartedAtRef.current
             : 0;
@@ -570,8 +630,25 @@ export default function VerbalFlashcardsPage() {
             'speech',
             responseTime,
             exerciseSessionId,
-            () => {
+            (response) => {
                 if (!canContinueFlow()) return;
+                if (!response || response.error || response.success === false) {
+                    updateStatusWithDebounce(
+                        `Could not save result${response?.error ? `: ${response.error}` : ''}`,
+                        'error',
+                        0,
+                    );
+                    return;
+                }
+
+                const wasAccepted = Boolean(response.is_correct);
+                const nextCorrectBookmarks = wasAccepted
+                    ? [...correctBookmarks, card]
+                    : correctBookmarks;
+                const nextIncorrectBookmarks = wasAccepted
+                    ? incorrectBookmarks
+                    : [...incorrectBookmarks, card];
+                const practicedCount = totalPracticedBookmarksInSession + 1;
                 setCorrectBookmarks(nextCorrectBookmarks);
                 setIncorrectBookmarks(nextIncorrectBookmarks);
                 setTotalPracticedBookmarksInSession(practicedCount);
@@ -579,7 +656,7 @@ export default function VerbalFlashcardsPage() {
 
                 isResolvingCardRef.current = true;
                 const feedbackCopy = getFeedbackCopy();
-                const feedbackIntro = isCorrect
+                const feedbackIntro = wasAccepted
                     ? feedbackCopy.successIntro
                     : feedbackCopy.finalIncorrectIntro;
 
@@ -611,6 +688,7 @@ export default function VerbalFlashcardsPage() {
         speakFeedbackWithAnswer,
         totalPracticedBookmarksInSession,
         canContinueFlow,
+        updateStatusWithDebounce,
     ]);
 
     const handleAttemptOutcome = useCallback((card, userAnswer, isCorrect) => {
@@ -741,22 +819,17 @@ export default function VerbalFlashcardsPage() {
 
                 if (analysis?.error) {
                     console.error('Pronunciation check error:', analysis.error);
-
-                    const isCorrect = transcription.toLowerCase().includes(expectedText.toLowerCase());
-
-                    displayResults(transcription, {
-                        accuracy: isCorrect ? 100 : 0,
-                        feedback: isCorrect ? 'Correct!' : 'Try again',
-                        wordMatches: [],
-                    });
-
+                    updateStatusWithDebounce('Could not evaluate pronunciation. Please try again.', 'error', 0);
                     cleanupAudioResources();
-                    handleAttemptOutcome(currentCard, transcription, isCorrect);
+                    return;
                 } else {
                     displayResults(transcription, analysis);
-                    const isCorrect = (analysis?.accuracy || 0) >= 70;
                     cleanupAudioResources();
-                    handleAttemptOutcome(currentCard, transcription, isCorrect);
+                    handleAttemptOutcome(
+                        currentCard,
+                        transcription,
+                        Boolean(analysis?.isAccepted),
+                    );
                 }
 
             });
@@ -1005,65 +1078,6 @@ export default function VerbalFlashcardsPage() {
         beginCardFlow();
     }, [beginCardFlow]);
 
-    const reseedFlashcards = useCallback(() => {
-        if (isReseeding) return;
-
-        stopCurrentFlow();
-        setIsReseeding(true);
-        setLoading(true);
-        resetCardUi();
-        setCorrectBookmarks([]);
-        setIncorrectBookmarks([]);
-        setTotalPracticedBookmarksInSession(0);
-        setTotalScore(0);
-        setCurrentStreak(0);
-        setStatusMessage('Adding fresh Danish test words...');
-        setStatusType('processing');
-
-        endExerciseSessionIfNeeded();
-        exerciseSessionIdRef.current = null;
-        startExerciseSession();
-
-        api.reseedFlashcards(20, (result) => {
-            if (result?.error) {
-                setIsReseeding(false);
-                setLoading(false);
-                updateStatusWithDebounce(`Reseed failed: ${result.error}`, 'error', 0);
-                return;
-            }
-
-            const seededCount = result?.seeded_count || 0;
-            const refreshedCount = result?.refreshed_count || 0;
-
-            loadFlashcards((cards) => {
-                setIsReseeding(false);
-
-                if (cards.length > 0) {
-                    updateStatusWithDebounce(
-                        `Ready with ${cards.length} flashcards (${seededCount} new, ${refreshedCount} refreshed).`,
-                        'idle',
-                        0
-                    );
-                } else {
-                    updateStatusWithDebounce(
-                        `Added words (${seededCount} new, ${refreshedCount} refreshed), but no flashcards are available yet.`,
-                        'warning',
-                        0
-                    );
-                }
-            });
-        });
-    }, [
-        api,
-        endExerciseSessionIfNeeded,
-        isReseeding,
-        loadFlashcards,
-        resetCardUi,
-        startExerciseSession,
-        stopCurrentFlow,
-        updateStatusWithDebounce,
-    ]);
-
     useEffect(() => {
         isPageActiveRef.current = true;
         loadFlashcards();
@@ -1239,12 +1253,6 @@ export default function VerbalFlashcardsPage() {
                             <option value="0.08">Medium Noise (Outdoor)</option>
                             <option value="0.11">High Noise (Street)</option>
                         </s.FilterSelect>
-                        <s.HeaderButton
-                            onClick={reseedFlashcards}
-                            disabled={loading || isReseeding}
-                        >
-                            {isReseeding ? 'Reseeding…' : 'Reseed 20 Danish Words'}
-                        </s.HeaderButton>
                         <s.HeaderButton onClick={openAsrMetrics}>
                             {showAsrStats ? 'Refresh ASR Stats' : 'Show ASR Stats'}
                         </s.HeaderButton>
@@ -1326,11 +1334,7 @@ export default function VerbalFlashcardsPage() {
 
                                         <s.FeedbackMessage
                                             $feedbackType={
-                                                accuracyResult.accuracy >= 70
-                                                    ? 'success'
-                                                    : accuracyResult.accuracy >= 40
-                                                        ? 'warning'
-                                                        : 'error'
+                                                accuracyResult.isAccepted ? 'success' : 'warning'
                                             }
                                         >
                                             {accuracyResult.feedback}
