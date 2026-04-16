@@ -629,9 +629,23 @@ export default function VerbalFlashcardsPage() {
                 if (!canContinueFlow()) {
                     return;
                 }
-                if (getCurrentCard()?.id === card.id) {
-                    beginCardFlowRef.current();
-                }
+                setIsCooldown(true);
+                isCooldownRef.current = true;
+                updateStatusWithDebounce('Get ready to try again...', 'cooldown', 0);
+                interCardDelayTimeoutRef.current = setTimeout(() => {
+                    interCardDelayTimeoutRef.current = null;
+                    if (!canContinueFlow()) {
+                        setIsCooldown(false);
+                        isCooldownRef.current = false;
+                        return;
+                    }
+                    setIsCooldown(false);
+                    isCooldownRef.current = false;
+                    updateStatusWithDebounce('Retrying the same card...', 'processing', 0);
+                    if (getCurrentCard()?.id === card.id) {
+                        beginCardFlowRef.current();
+                    }
+                }, BETWEEN_CARDS_DELAY_MS);
             });
             return;
         }
