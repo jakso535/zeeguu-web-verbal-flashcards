@@ -71,6 +71,88 @@ export default function VerbalFlashcardsPage() {
     const SILENCE_THRESHOLD_MS = 1500;
     const MIN_VOICE_BEFORE_STOP_ELIGIBLE_MS = 120;
     const BETWEEN_CARDS_DELAY_MS = 5000;
+    const FEEDBACK_COPY = {
+        da: {
+            successIntro: 'Godt klaret! Det rigtige svar var',
+            retryPrompt: 'Du er meget tæt på. Prøv igen.',
+            finalIncorrectIntro: 'Du var meget tæt på. Det rigtige svar var',
+        },
+        de: {
+            successIntro: 'Gut gemacht! Die richtige Antwort war',
+            retryPrompt: 'Du bist ganz nah dran. Versuch es noch einmal.',
+            finalIncorrectIntro: 'Du warst ganz nah dran. Die richtige Antwort war',
+        },
+        el: {
+            successIntro: 'Μπράβο! Η σωστή απάντηση ήταν',
+            retryPrompt: 'Είσαι πολύ κοντά. Προσπάθησε ξανά.',
+            finalIncorrectIntro: 'Ήσουν πολύ κοντά. Η σωστή απάντηση ήταν',
+        },
+        en: {
+            successIntro: 'Well done! The correct answer was',
+            retryPrompt: 'Almost there. Try again.',
+            finalIncorrectIntro: 'You almost got it. The correct answer was',
+        },
+        es: {
+            successIntro: 'Muy bien. La respuesta correcta era',
+            retryPrompt: 'Ya casi. Inténtalo de nuevo.',
+            finalIncorrectIntro: 'Casi lo lograste. La respuesta correcta era',
+        },
+        fr: {
+            successIntro: 'Bien joué ! La bonne réponse était',
+            retryPrompt: 'Tu y es presque. Essaie encore.',
+            finalIncorrectIntro: 'Tu y étais presque. La bonne réponse était',
+        },
+        hu: {
+            successIntro: 'Szép munka! A helyes válasz ez volt',
+            retryPrompt: 'Nagyon közel vagy. Próbáld újra.',
+            finalIncorrectIntro: 'Majdnem sikerült. A helyes válasz ez volt',
+        },
+        it: {
+            successIntro: 'Ben fatto! La risposta corretta era',
+            retryPrompt: 'Ci sei quasi. Riprova.',
+            finalIncorrectIntro: 'Ci sei andato vicino. La risposta corretta era',
+        },
+        nl: {
+            successIntro: 'Goed gedaan! Het juiste antwoord was',
+            retryPrompt: 'Je bent er bijna. Probeer het opnieuw.',
+            finalIncorrectIntro: 'Je zat er bijna. Het juiste antwoord was',
+        },
+        no: {
+            successIntro: 'Bra jobbet! Det riktige svaret var',
+            retryPrompt: 'Nesten der. Prøv igjen.',
+            finalIncorrectIntro: 'Du var veldig nær. Det riktige svaret var',
+        },
+        pl: {
+            successIntro: 'Dobra robota! Poprawna odpowiedź to',
+            retryPrompt: 'Jesteś bardzo blisko. Spróbuj jeszcze raz.',
+            finalIncorrectIntro: 'Było bardzo blisko. Poprawna odpowiedź to',
+        },
+        pt: {
+            successIntro: 'Muito bem! A resposta correta era',
+            retryPrompt: 'Quase lá. Tenta outra vez.',
+            finalIncorrectIntro: 'Esteve quase. A resposta correta era',
+        },
+        ro: {
+            successIntro: 'Foarte bine! Răspunsul corect era',
+            retryPrompt: 'Ești foarte aproape. Mai încearcă o dată.',
+            finalIncorrectIntro: 'Ai fost foarte aproape. Răspunsul corect era',
+        },
+        ru: {
+            successIntro: 'Отлично! Правильный ответ был',
+            retryPrompt: 'Почти получилось. Попробуй еще раз.',
+            finalIncorrectIntro: 'Ты был очень близко. Правильный ответ был',
+        },
+        sv: {
+            successIntro: 'Bra jobbat! Rätt svar var',
+            retryPrompt: 'Du är väldigt nära. Försök igen.',
+            finalIncorrectIntro: 'Du var väldigt nära. Rätt svar var',
+        },
+        tr: {
+            successIntro: 'Aferin! Doğru cevap şuydu',
+            retryPrompt: 'Çok yaklaştın. Tekrar dene.',
+            finalIncorrectIntro: 'Çok yaklaştın. Doğru cevap şuydu',
+        },
+    };
 
     useEffect(() => {
         currentCardIndexRef.current = currentCardIndex;
@@ -115,6 +197,10 @@ export default function VerbalFlashcardsPage() {
         return userDetails?.native_language || 'en';
     }, [userDetails]);
 
+    const getTranslationLanguageId = useCallback(() => {
+        return userDetails?.native_language || 'en';
+    }, [userDetails]);
+
     const getLearnedLanguageLabel = useCallback(() => {
         const code = userDetails?.learned_language || '';
         const languageNames = {
@@ -138,6 +224,11 @@ export default function VerbalFlashcardsPage() {
 
         return languageNames[code] || code || 'the target language';
     }, [userDetails]);
+
+    const getFeedbackCopy = useCallback(() => {
+        const translationLanguageId = getTranslationLanguageId();
+        return FEEDBACK_COPY[translationLanguageId] || FEEDBACK_COPY.en;
+    }, [getTranslationLanguageId]);
 
     const openAsrMetrics = useCallback(() => {
         api.getVerbalFlashcardsAsrStats((stats) => {
@@ -432,22 +523,22 @@ export default function VerbalFlashcardsPage() {
     }, [getCurrentCard, getLearnedLanguageLabel, getPromptLanguageId, speakText]);
 
     const speakFeedback = useCallback((textToSpeak) => {
-        const languageId = userDetails?.native_language || 'en';
+        const languageId = getTranslationLanguageId();
         return speakText(textToSpeak, languageId, 'Playing feedback...');
-    }, [speakText, userDetails]);
+    }, [getTranslationLanguageId, speakText]);
 
     const speakFeedbackWithAnswer = useCallback((introText, answerText) => {
-        const nativeLanguageId = userDetails?.native_language || 'en';
-        const learnedLanguageId = userDetails?.learned_language || nativeLanguageId;
+        const translationLanguageId = getTranslationLanguageId();
+        const learnedLanguageId = userDetails?.learned_language || translationLanguageId;
 
-        return speakText(introText, nativeLanguageId, 'Playing feedback...')
+        return speakText(introText, translationLanguageId, 'Playing feedback...')
             .then(() => {
                 if (!answerText || !isPageActiveRef.current) {
                     return;
                 }
                 return speakText(answerText, learnedLanguageId, 'Playing answer...');
             });
-    }, [speakText, userDetails]);
+    }, [getTranslationLanguageId, speakText, userDetails]);
 
     const resolveCardAttempt = useCallback((card, userAnswer, isCorrect) => {
         if (!card || !canContinueFlow()) return;
@@ -487,9 +578,10 @@ export default function VerbalFlashcardsPage() {
                 delete attemptCountsRef.current[card.id];
 
                 isResolvingCardRef.current = true;
+                const feedbackCopy = getFeedbackCopy();
                 const feedbackIntro = isCorrect
-                    ? 'Well done! The correct answer was'
-                    : 'You almost got it. The correct answer was';
+                    ? feedbackCopy.successIntro
+                    : feedbackCopy.finalIncorrectIntro;
 
                 speakFeedbackWithAnswer(feedbackIntro, card.answer).finally(() => {
                     if (!canContinueFlow()) {
@@ -514,6 +606,7 @@ export default function VerbalFlashcardsPage() {
         api,
         correctBookmarks,
         incorrectBookmarks,
+        getFeedbackCopy,
         removeResolvedCard,
         speakFeedbackWithAnswer,
         totalPracticedBookmarksInSession,
@@ -532,7 +625,7 @@ export default function VerbalFlashcardsPage() {
         }
 
         if (nextAttemptCount === 1) {
-            speakFeedback('Almost there. Try again.').finally(() => {
+            speakFeedback(getFeedbackCopy().retryPrompt).finally(() => {
                 if (!canContinueFlow()) {
                     return;
                 }
@@ -544,7 +637,7 @@ export default function VerbalFlashcardsPage() {
         }
 
         resolveCardAttempt(card, userAnswer, false);
-    }, [getCurrentCard, resolveCardAttempt, speakFeedback, canContinueFlow]);
+    }, [getCurrentCard, getFeedbackCopy, resolveCardAttempt, speakFeedback, canContinueFlow]);
 
     const stopRecording = useCallback(() => {
         const recorder = mediaRecorderRef.current;
