@@ -1,101 +1,104 @@
 // Frontend API client for verbal flashcards
 import { Zeeguu_API } from "./classDef";
 
+function deliver(callback, payload) {
+  if (callback) {
+    callback(payload);
+  }
+}
+
+function fetchJson(url, options, callback, errorLabel) {
+  fetch(url, options)
+    .then((response) => response.json())
+    .then((data) => {
+      deliver(callback, data);
+    })
+    .catch((error) => {
+      console.error(`${errorLabel}:`, error);
+      deliver(callback, { error: error.message });
+    });
+}
 
 Zeeguu_API.prototype.getFlashcards = function (params, callback) {
-   const { limit, offset } = params || {};
-   let url = `verbal_flashcards?`;
-  
-   if (limit) url += `limit=${limit}&`;
-   if (offset) url += `offset=${offset}&`;
+  const { limit, offset } = params || {};
+  const queryParams = new URLSearchParams();
 
+  if (limit !== undefined && limit !== null) {
+    queryParams.set("limit", limit);
+  }
+  if (offset !== undefined && offset !== null) {
+    queryParams.set("offset", offset);
+  }
 
-   this._getJSON(url.slice(0, -1), callback);
+  const queryString = queryParams.toString();
+  const url = queryString ? `verbal_flashcards?${queryString}` : "verbal_flashcards";
+
+  this._getJSON(url, callback);
 };
 
+Zeeguu_API.prototype.submitFlashcardAnswer = function (
+  flashcardId,
+  userAnswer,
+  isCorrect,
+  answerSource,
+  responseTimeMs,
+  sessionId,
+  callback,
+) {
+  const payload = {
+    flashcard_id: flashcardId,
+    user_answer: userAnswer,
+    is_correct: isCorrect,
+    answer_source: answerSource,
+    response_time_ms: responseTimeMs,
+    session_id: sessionId,
+  };
 
-Zeeguu_API.prototype.getVerbalFlashcardsAsrMetricsUrl = function () {
-   return this._appendSessionToUrl('verbal_flashcards/asr_metrics');
+  fetchJson(
+    this._appendSessionToUrl("verbal_flashcards/submit"),
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    },
+    callback,
+    "Submit error",
+  );
 };
 
+Zeeguu_API.prototype.transcribeAudio = function (audioFile, callback) {
+  const formData = new FormData();
+  formData.append("file", audioFile);
 
-Zeeguu_API.prototype.getVerbalFlashcardsAsrStats = function (callback) {
-   this._getJSON('verbal_flashcards/asr_stats', callback);
+  fetchJson(
+    this._appendSessionToUrl("verbal_flashcards/transcribe"),
+    {
+      method: "POST",
+      body: formData,
+    },
+    callback,
+    "Transcription error",
+  );
 };
-
-
-Zeeguu_API.prototype.submitFlashcardAnswer = function (flashcardId, userAnswer, isCorrect, answerSource, responseTimeMs, sessionId, callback) {
-   const payload = {
-       flashcard_id: flashcardId,
-       user_answer: userAnswer,
-       is_correct: isCorrect,
-       answer_source: answerSource,
-       response_time_ms: responseTimeMs,
-       session_id: sessionId
-   };
-
-
-   fetch(this._appendSessionToUrl('verbal_flashcards/submit'), {
-       method: 'POST',
-       headers: {
-           'Content-Type': 'application/json'
-       },
-       body: JSON.stringify(payload),
-   })
-       .then(response => response.json())
-       .then(data => {
-           if (callback) callback(data);
-       })
-       .catch(error => {
-           console.error('Submit error:', error);
-           if (callback) callback({ error: error.message });
-       });
-};
-
-
-Zeeguu_API.prototype.transcribeAudio = function (audioFile, flashcardId, callback) {
-   const formData = new FormData();
-   formData.append('file', audioFile);
-   if (flashcardId) {
-       formData.append('flashcard_id', flashcardId);
-   }
-
-
-   fetch(this._appendSessionToUrl('verbal_flashcards/transcribe'), {
-       method: 'POST',
-       body: formData,
-   })
-       .then(response => response.json())
-       .then(data => {
-           if (callback) callback(data);
-       })
-       .catch(error => {
-           console.error('Transcription error:', error);
-           if (callback) callback({ error: error.message });
-       });
-};
-
 
 Zeeguu_API.prototype.checkPronunciation = function (userSpeech, expectedText, callback) {
-   const payload = {
-       user_speech: userSpeech,
-       expected_text: expectedText
-   };
+  const payload = {
+    user_speech: userSpeech,
+    expected_text: expectedText,
+  };
 
-
-   fetch(this._appendSessionToUrl('verbal_flashcards/check_pronunciation'), {
-       method: 'POST',
-       headers: {
-           'Content-Type': 'application/json'
-       },
-       body: JSON.stringify(payload),
-   })
-       .then(response => response.json())
-       .then(data => {
-           if (callback) callback(data);
-       })
-       .catch(error => {
-           console.error('Pronunciation check error:', error);
-           if (callback) callback({ error: error.message });
-       });
+  fetchJson(
+    this._appendSessionToUrl("verbal_flashcards/check_pronunciation"),
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    },
+    callback,
+    "Pronunciation check error",
+  );
 };
